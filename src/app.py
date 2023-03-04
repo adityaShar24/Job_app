@@ -1,5 +1,4 @@
 from flask import Flask , request , make_response
-import json
 from routes.auth import auth_bp
 from routes.job import job_bp
 

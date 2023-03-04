@@ -1,14 +1,15 @@
 from flask import Blueprint , request , make_response 
 import json
 import bson.json_util as json_util
-from database import jobs_collections
+from database import jobs_collections , applicants_collections , users_collections
 from email_validator import validate_email, EmailNotValidError
+from bson.objectid import ObjectId
 
 
 job_bp = Blueprint("job_bp" , __name__)
 
 @job_bp.post("/job_posts")
-def Apply():
+def Posts():
     body = json.loads(request.data)
     Jobs = {
         "title":body["title"],
@@ -37,4 +38,37 @@ def Apply():
     except EmailNotValidError as e:
         return make_response({"error": "Invalid email address"}, 400)
     
+
+@job_bp.post("/apply")
+def Apply():
+    body = json.loads(request.data) 
+    applicant = {
+        'job_id':body['job_id'],
+        'username':body['username'] ,
+        'email': body['email'],
+        'resume':body['resume'],
+        'contact_no':body['contact_no'],
+        'cover_letter':body['cover_letter']
+        
+    }
     
+    for field in ['username','email','resume','contact_no','cover_letter']:
+        if not applicant.get(field):
+            return make_response({'message': f"{field} cannot be empty."} , 400)
+        
+    jobs = jobs_collections.find_one({"_id": ObjectId(applicant["job_id"])})
+    users = users_collections.find_one({'username':body['username']})
+    
+    if len(applicant['contact_no']) != 10:
+        return make_response({'message': 'Contact number should be of 10 digits.'}, 400)
+    
+    if not jobs:
+        return make_response({"message": "Job not found."}, 404)
+    
+    if not users: 
+        return make_response({'message':'User not found'} , 404)
+    
+    saved_applicants = applicants_collections.insert_one(applicant).inserted_id
+    jsonVersion = json_util.dumps(saved_applicants)
+    
+    return make_response({"message": "Application submitted successfully." , 'applicant':jsonVersion}, 200)

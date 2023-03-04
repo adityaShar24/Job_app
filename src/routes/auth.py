@@ -3,6 +3,7 @@ import bson.json_util as json_util
 from database import  users_collections
 import json
 from passlib.hash import pbkdf2_sha256
+import bcrypt
 import jwt
 import datetime
 
@@ -38,35 +39,40 @@ def register():
     jsonVersin = json_util.dumps(savedUsers)
     return make_response({ "message":"User has been registered succesfully" , "User":jsonVersin} , 200)
 
-
 @auth_bp.post("/login")
-def Login():
+def login():
     body = json.loads(request.data)
-    users = {
+    user = {
         "username": body["username"],
-        "password":body["password"]
+        "password": body["password"]
     }
-    username_login = users_collections.find_one(
-        {"username": body["username"]}
-    )
-    password_login = users_collections.find_one(
-        {"password": body["password"]}
-    )
-    login_password = body["password"]
-    hashed_password = pbkdf2_sha256.hash(login_password)
+    existing_user = users_collections.find_one({"username": user["username"]})
+    if not existing_user:
+        return make_response({"message": "Invalid username"}, 401)
     
-    if not username_login or not pbkdf2_sha256.verify(login_password, username_login['password']):
-        return make_response({"message":"Invalid username"} , 401)
+    correct_password = users_collections.find_one({"password": user["password"]})
+    if not correct_password:
+        return make_response({'message':'Invalid Password'} , 400)
     
-    json_serialize = json.loads(json_util.dumps(username_login["_id"]))
     
-    if  pbkdf2_sha256.verify(login_password, hashed_password) == True:
+    bytes = user["password"].encode('utf-8')
+    salt = bcrypt.gensalt()
+    hash = bcrypt.hashpw( bytes , salt)
+    login_password = user["password"]
+    login_bytes = login_password.encode('utf-8')
+    check_hash_password = bcrypt.checkpw(login_bytes , hash)
+    
+    json_serialize = json.loads(json_util.dumps(existing_user["_id"]))
+    
+    if check_hash_password == True:
         token = jwt.encode({"_id": json_serialize, "exp": datetime.datetime.utcnow(
         ) + datetime.timedelta(minutes=1) } , 'secret_key')
         return make_response({'token':token},200)
     
-    if  pbkdf2_sha256.verify(login_password, hashed_password) == False:
-        return make_response({"message": "Could not verify"}, 400)
+    if check_hash_password == False:
+        return make_response({'message':"Could not verify"} , 400)
+    
+
 
 
 
